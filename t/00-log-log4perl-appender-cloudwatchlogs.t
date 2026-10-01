@@ -5,6 +5,6 @@ use warnings;
 
 use Test::More;
 
-use_ok(qw(Log::Log4perl::Appender::CloudWatch));
+use_ok(qw(Log::Log4perl::Appender::CloudWatchLogs));
 
 done_testing;

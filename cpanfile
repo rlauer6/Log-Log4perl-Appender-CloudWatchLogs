@@ -1,7 +1,5 @@
-requires "Amazon::API::CloudWatchLogs", "2.1.13";
+requires "Amazon::API::CloudWatchLogs", ">=1.43.90";
 requires "CLI::Simple", "2.0.1";
-requires "CLI::Simple::Constants", "2.0.1";
-requires "CLI::Simple::Utils", "2.0.1";
 requires "Class::Accessor::Fast", "0.51";
 requires "Data::UUID", "1.227";
 requires "Date::Format", "2.24";

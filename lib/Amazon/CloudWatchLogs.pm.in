@@ -9,16 +9,16 @@ BEGIN {
 }
 
 use Amazon::API::CloudWatchLogs;
+use CLI::Simple::Constants qw(:chars :booleans);
+use CLI::Simple::Utils qw(choose);
 use Carp;
 use Data::Dumper;
 use Data::UUID;
 use Date::Format;
 use Digest::MD5 qw( md5_hex );
 use English qw( -no_match_vars );
-use CLI::Simple::Constants qw(:chars :booleans);
-use CLI::Simple::Utils qw(choose);
-use Time::HiRes;
 use Tie::IxHash;
+use Time::HiRes;
 
 use Readonly;
 
@@ -35,6 +35,7 @@ Readonly my $ITER_LIMIT          => 5;
 Readonly my $LOCALSTACK_ENDPOINT => q{http://localhost:4566};
 Readonly my $LOG_DELAY           => 1;
 Readonly my $TIME_ZONE           => q{GMT};
+Readonly my $MAX_DELETE_ATTEMPTS => 5;
 
 # time
 Readonly my $MILLISECONDS_PER_SECOND => 1000;
@@ -44,6 +45,7 @@ Readonly my $HOURS_IN_DAY            => 24;
 Readonly my $SECONDS_IN_HOUR         => $SECONDS_IN_MINUTE * $MINUTES_IN_HOUR;
 Readonly my $SECONDS_IN_DAY          => $SECONDS_IN_HOUR * $HOURS_IN_DAY;
 Readonly my $LAMBDA_IDLE_LIMIT       => 20 * $SECONDS_IN_MINUTE;
+Readonly my $DELETE_STREAM_DELAY     => 0.1;
 
 our $VERSION   = '@PACKAGE_VERSION@';
 our $GIT_SHA   = '@GIT_SHA@';
@@ -53,7 +55,102 @@ __PACKAGE__->use_log4perl( level => 'info' );
 
 use parent qw(CLI::Simple);
 
-caller or __PACKAGE__->main;
+caller or exit __PACKAGE__->main;
+
+#########################################################################
+sub cmd_prune_streams {
+#########################################################################
+  my ($self) = @_;
+
+  my ( $group, $older_than ) = $self->get_args;
+
+  if ( $group && !$older_than ) {
+    $older_than = $group;
+    $group      = $self->get_group;
+  }
+
+  die "usage: prune-streams --group group-name older-than\n"
+    if !$group || !$older_than;
+
+  my $cutoff = _parse_start_time($older_than) * $MILLISECONDS_PER_SECOND;
+
+  my $cwl = $self->get_cwl;
+
+  my $decode_always = $cwl->get_decode_always;
+  my $use_paginator = $cwl->get_use_paginator;
+
+  $cwl->set_decode_always($TRUE);
+  $cwl->set_use_paginator($FALSE);
+
+  my $next_token = $EMPTY;
+  my $deleted    = 0;
+
+  PAGE: while ($TRUE) {
+
+    my $rsp = $cwl->DescribeLogStreams(
+      { logGroupName => $group,
+        orderBy      => 'LastEventTime',
+        descending   => 0,
+        $next_token ? ( nextToken => $next_token ) : (),
+      },
+    );
+
+    foreach my $stream ( @{ $rsp->{logStreams} // [] } ) {
+
+      next
+        if !exists $stream->{lastEventTimestamp};
+
+      $self->get_logger->debug(
+        sub {
+          return Dumper(
+            [ stream           => $stream,
+              last             => fmt_time( $stream->{lastEventTimestamp} ),
+              last_raw         => $stream->{lastEventTimestamp},
+              cutoff_formatted => fmt_time($cutoff),
+              cutoff_raw       => $cutoff
+            ]
+          );
+        }
+      );
+
+      last PAGE
+        if $stream->{lastEventTimestamp} >= $cutoff;
+
+      my $stream_name = $stream->{logStreamName};
+
+      my $attempt = 0;
+
+      DELETE: while ($TRUE) {
+        my $err;
+
+        if ( !$self->get_dryrun ) {
+          eval { $cwl->DeleteLogStream( { logGroupName => $group, logStreamName => $stream_name, }, ); };
+          $err = $EVAL_ERROR;
+          Time::HiRes::sleep($DELETE_STREAM_DELAY);
+        }
+
+        last DELETE
+          if !$err;
+
+        die "$err"
+          if "$err" !~ /ThrottlingException/xsm || ++$attempt >= $MAX_DELETE_ATTEMPTS;
+
+      }
+
+      print {*STDOUT} "$stream_name\n";
+      $deleted++;
+    }
+
+    $next_token = $rsp->{nextToken};
+
+    last if !$next_token;
+  }
+
+  $cwl->set_decode_always($decode_always);
+  $cwl->set_use_paginator($use_paginator);
+
+  return $SUCCESS;
+}
 
 #########################################################################
 sub cmd_version {
@@ -395,9 +492,7 @@ sub cmd_list_streams {
 
   $t->setCols( 'Stream Name', 'Creation Date', 'Last Event' );
 
-  my @sorted_list = sort { ( $a->{lastEventTimestamp} // 0 ) <=> ( $b->{lastEventTimestamp} // 0 ) } @{$log_streams};
-
-  foreach my $s (@sorted_list) {
+  foreach my $s ( reverse values %{$log_streams} ) {
 
     my ( $creation_time, $last_event ) = @{$s}{qw(creationTime lastEventTimestamp)};
 
@@ -687,6 +782,7 @@ sub main {
     'last-stream'   => \&cmd_last_stream,
     'list-groups'   => \&cmd_list_groups,
     'list-streams'  => \&cmd_list_streams,
+    'prune-streams' => \&cmd_prune_streams,
     'version'       => \&cmd_version,
   );
 
@@ -694,6 +790,7 @@ sub main {
     color|c!
     debug|d
     discovery-interval=i
+    dryrun
     endpoint-url|u=s
     follow|f
     group|g=s
@@ -725,6 +822,7 @@ sub main {
     default_options => \%defaults,
     option_specs    => \@option_specs,
     extra_options   => [qw(cwl)],
+    abbreviations   => $TRUE,
   );
 
   return $cli->run;
@@ -836,6 +934,24 @@ List all log streams for a log group.
 
 Display usage information.
 
+=item prune-streams
+
+Delete log streams whose last event is older than the specified age.
+
+ aws-logs -g group-name prune-streams older-than
+
+Example:
+
+ aws-logs -g /aws/lambda/my-function prune-streams 7d
+
+The C<older-than> argument is required and accepts a number followed by
+C<m>, C<h>, or C<d> for minutes, hours, or days (for example, C<30m>,
+C<12h>, or C<7d>). Streams without a C<lastEventTimestamp> are not deleted.
+
+CloudWatch Logs retention policies expire log events but do not delete
+the corresponding log stream resources. This command can be used to
+remove stale stream metadata after those events have expired.
+
 =item version
 
 Display the program version and copyright information.
@@ -850,7 +966,7 @@ Display the program version and copyright information.
 
 =item --color, -c
 
-Display output in color. Use C<--no-color> to disable. Colors are
+Display output in color by default. Use C<--no-color> to disable. Colors are
 applied to the log group name (green) and stream name (magenta) in the
 output prefix.
 
@@ -863,7 +979,12 @@ impact performance due to L<Data::Dumper> output for every API call.
 =item --discovery-interval
 
 Number of seconds between stream discovery and idle-stream polling passes when
-C<--follow> is enabled. Default: C<10>. See L</Follow Mode>.
+C<--follow> is enabled. Default: C<1>. See L</Follow Mode>.
+
+=item --dryrun
+
+Display the log streams that would be deleted by C<prune-streams>
+without deleting them.
 
 =item --endpoint-url, -u
 
@@ -983,9 +1104,9 @@ If an idle stream produces new events, it becomes active again.
 
 =item retired
 
-For Lambda log groups, idle streams may eventually be retired from polling
-after remaining inactive beyond the configured retirement interval. Retired
-streams are not polled directly, but stream discovery can reactivate them if
+For Lambda log groups, idle streams are retired from direct polling
+after remaining inactive for 20 minutes. Retired streams are not
+polled directly, but stream discovery can reactivate them if
 CloudWatch reports newer activity.
 
 =back
@@ -1085,7 +1206,7 @@ the compact C<{n}d>, C<{n}h>, and C<{n}m> formats are supported.
 
 =head1 VERSION
 
-This documentation refers to version 1.0.5
+This documentation refers to version @PACKAGE_VERSION@
 
 =head1 SEE ALSO
 

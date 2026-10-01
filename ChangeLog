@@ -1,3 +1,33 @@
+Thu Oct  1 07:30:11 2026  Rob Lauer  <rclauer@gmail.com>
+
+	[1.0.7]:
+	* VERSION: bump
+	* release-notes.md: new
+	* release-notes/release-notes-1.0.7.md: new
+	* project.mk: new
+	* Makefile: updated by CPAN::Maker::Bootstrapper
+	* .gitignore: likewise
+	* .includes/local.mk: likewise
+	* .includes/perl.mk: likewise
+	* .includes/update.mk: likewise
+	* .includes/bootstrap.mk: added by CPAN::Maker::Bootstrapper
+	* .includes/publish.mk: new
+	* buildspec.yml: CloudWatch -> CloudWatchLogs
+	* lib/Amazon/CloudWatchLogs.pm.in
+	- pod updates
+	- + prune-streams command
+	* requires
+	- Amazon::API::CloudWatchLogs@1.42.90
+	- removed packages included in already listed packages
+	* cpanfile: likewise
+	* lib/Log/Log4perl/Appender/CloudWatchLogs.pm.in
+	- renamed from CloudWatch
+	- POD updates
+	* t/00-log-log4perl-appender-cloudwatchlogs.t: renamed
+	* Dockerfile.dockerhub: new
+	* dockerhub.mk: new
+	* project.mk: include above
+
 Wed Sep  2 10:14:06 2026  Rob Lauer  <rclauer@gmail.com>
 
 	[1.0.6]:
@@ -12,6 +42,7 @@ Wed Sep  2 10:14:06 2026  Rob Lauer  <rclauer@gmail.com>
 	- add idle_streams, retired_streams tracking
 	(refresh_streams)
 	- retire expired lambda streams
+
 
 Tue Aug 25 08:23:22 2026  Rob Lauer  <rclauer@gmail.com>
 

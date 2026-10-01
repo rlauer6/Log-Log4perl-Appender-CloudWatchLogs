@@ -1,0 +1,46 @@
+FROM debian:trixie AS builder
+
+ARG PACKAGE_VERSION
+ARG RESOLVER=02packages,https://cpan.openbedrock.net/orepan2
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        ca-certificates \
+        curl \
+        gcc \
+        libexpat-dev \
+        libperl-dev \
+        libssl-dev \
+        make \
+        perl \
+        zlib1g-dev \
+    && curl -fsSL https://raw.githubusercontent.com/skaji/cpm/main/cpm \
+        | perl - install -g App::cpm \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY Log-Log4perl-Appender-CloudWatchLogs-${PACKAGE_VERSION}.tar.gz /tmp/
+
+RUN cpm install -L /app/local \
+        --resolver "${RESOLVER}" \
+        --show-build-log-on-failure \
+        --verbose \
+        --no-test --without-test \
+        /tmp/Log-Log4perl-Appender-CloudWatchLogs-${PACKAGE_VERSION}.tar.gz 
+
+FROM debian:trixie-slim
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        ca-certificates \
+        libexpat1 \
+        libssl3 \
+        perl \
+        zlib1g \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /app/local /app/local
+
+ENV PERL5LIB=/app/local/lib/perl5
+ENV PATH=/app/local/bin:$PATH
+
+CMD ["aws-logs", "--help"]

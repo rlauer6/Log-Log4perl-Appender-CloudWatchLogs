@@ -1,28 +1,32 @@
-project:
-  description: Log::Log4perl::Appender::CloudWatch
-  author:
-    name: Rob Lauer
-    mailto: rclauer@gmail.com
-pm-module: Log::Log4perl::Appender::CloudWatch
-min-perl-version: 5.010
+---
 dependencies:
   requires: requires
   test-requires: test-requires
-path:
-  pm-module: lib
-  exe-files: bin
-  tests: t
 extra-files:
   - ChangeLog
   - release-notes.md
-  - share:
+  -
+    share:
       - README.md
-resources:
-  homepage: http://github.com/rlauer6/Log-Log4perl-Appender-CloudWatch.git
-  bugtracker:
-    web: http://github.com/rlauer6/Log-Log4perl-Appender-CloudWatch/issues
+  - cpanfile.darkpan
+  - cpanm.darkpan
+min-perl-version: '5.010'
+path:
+  exe-files: bin
+  pm-module: lib
+  tests: t
+pm-module: Log::Log4perl::Appender::CloudWatchLogs
+project:
+  author:
     mailto: rclauer@gmail.com
+    name: 'Rob Lauer'
+  description: Log::Log4perl::Appender::CloudWatchLogs
+resources:
+  bugtracker:
+    mailto: rclauer@gmail.com
+    web: http://github.com/rlauer6/Log-Log4perl-Appender-CloudWatchLogs/issues
+  homepage: http://github.com/rlauer6/Log-Log4perl-Appender-CloudWatchLogs.git
   repository:
-    url: git://github.com/rlauer6/Log-Log4perl-Appender-CloudWatch.git
-    web: http://github.com/rlauer6/Log-Log4perl-Appender-CloudWatch.git
-    type: 'git'
+    type: git
+    url: git://github.com/rlauer6/Log-Log4perl-Appender-CloudWatchLogs.git
+    web: http://github.com/rlauer6/Log-Log4perl-Appender-CloudWatchLogs.git

@@ -1,7 +1,5 @@
-Amazon::API::CloudWatchLogs 2.1.13
+Amazon::API::CloudWatchLogs >=1.43.90
 CLI::Simple 2.0.1
-CLI::Simple::Constants 2.0.1
-CLI::Simple::Utils 2.0.1
 Class::Accessor::Fast 0.51
 Data::UUID 1.227
 Date::Format 2.24
